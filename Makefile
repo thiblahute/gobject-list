@@ -8,8 +8,8 @@ else
 endif
 
 CC ?= cc
-FLAGS=`pkg-config --cflags gobject-2.0`
-LIBS=`pkg-config --libs gobject-2.0 $(optional_libs)`
+FLAGS=`pkg-config --cflags glib-2.0 --cflags gstreamer-1.0`
+LIBS=`pkg-config --libs glib-2.0 --libs gstreamer-1.0`  $(optional_libs)
 
 OBJS = gobject-list.o
 
