@@ -29,6 +29,7 @@
 #define GLIB_VERSION_MAX_ALLOWED ENCODE_VERSION(2, 40)
 #define GLIB_VERSION_MIN_REQUIRED ENCODE_VERSION(2, 26)
 #include <glib-object.h>
+#include <gst/gst.h>
 
 #include <dlfcn.h>
 #include <signal.h>
@@ -198,8 +199,8 @@ _dump_object_list (GHashTable *hash)
       if (obj == NULL || obj->ref_count == 0)
         continue;
 
-      g_print (" - %p, %s: %u refs\n",
-          obj, G_OBJECT_TYPE_NAME (obj), obj->ref_count);
+      gst_println (" - %" GST_PTR_FORMAT ": %u refs", obj,
+              obj->ref_count);
     }
   g_print ("%u objects\n", g_hash_table_size (hash));
 }
@@ -229,7 +230,7 @@ _sig_usr2_handler (G_GNUC_UNUSED int signal)
   g_hash_table_iter_init (&iter, gobject_list_state.removed);
   while (g_hash_table_iter_next (&iter, &obj, &type))
     {
-      g_print (" - %p, %s\n", obj, (gchar *) type);
+      gst_println (" - %" GST_PTR_FORMAT "", obj);
     }
   g_print ("%u objects\n", g_hash_table_size (gobject_list_state.removed));
 
@@ -547,7 +548,7 @@ g_object_new (GType type,
         {
           g_mutex_lock(&output_mutex);
 
-          g_print (" ++ Created object %p, %s\n", obj, obj_name);
+          gst_println (" ++ Created object %" GST_PTR_FORMAT, obj);
           print_trace();
 
           g_mutex_unlock(&output_mutex);
@@ -599,8 +600,8 @@ g_object_ref (gpointer object)
     {
       g_mutex_lock(&output_mutex);
 
-      g_print (" +  Reffed object %p, %s; ref_count: %d -> %d\n",
-          obj, obj_name, ref_count, obj->ref_count);
+      gst_println (" +  Reffed object %" GST_PTR_FORMAT "; ref_count: %d -> %d",
+          obj, ref_count, obj->ref_count);
       print_trace();
 
       g_mutex_unlock(&output_mutex);
@@ -624,12 +625,103 @@ g_object_unref (gpointer object)
     {
       g_mutex_lock(&output_mutex);
 
-      g_print (" -  Unreffed object %p, %s; ref_count: %d -> %d\n",
-          obj, obj_name, obj->ref_count, obj->ref_count - 1);
+      gst_print (" -  Unreffed object %" GST_PTR_FORMAT "; ref_count: %d -> %d\n",
+          obj, obj->ref_count, obj->ref_count - 1);
       print_trace();
 
       g_mutex_unlock(&output_mutex);
     }
 
   real_g_object_unref (object);
+
+  if (object_filter (obj_name) && display_filter (DISPLAY_FLAG_REFS))
+    gst_print (" -  Unreffed object %p", obj);
+}
+
+static void *
+get_gst_func (const char *func_name)
+{
+  static void *handle = NULL;
+  void *func;
+  char *error;
+
+  if (G_UNLIKELY (g_once_init_enter (&handle)))
+    {
+      void *_handle;
+
+      _handle = dlopen("libgstreamer-1.0.so.0", RTLD_LAZY);
+
+      if (_handle == NULL)
+        g_error ("Failed to open libgstreamer-1.0.so.0: %s", dlerror ());
+
+      g_once_init_leave (&handle, _handle);
+    }
+
+  func = dlsym (handle, func_name);
+
+  if ((error = dlerror ()) != NULL)
+    g_error ("Failed to find symbol: %s", error);
+
+  return func;
+}
+
+void
+gst_structure_free (GstStructure * structure)
+{
+  void (* real_gst_structure_free) (GstStructure * structure);
+
+  real_gst_structure_free = get_gst_func ("gst_structure_free");
+
+  if (display_filter (DISPLAY_FLAG_CREATE) &&
+      object_filter ("GstStructure")) {
+      gst_println (" -  Free GstStructure %" GST_PTR_FORMAT, structure);
+      print_trace();
+  }
+
+  real_gst_structure_free (structure);
+}
+
+void
+gst_mini_object_free (GstMiniObject * mini_object)
+{
+  void (* real_gst_mini_object_free) (GstMiniObject * mini_object);
+
+  real_gst_mini_object_free = get_gst_func ("gst_mini_object_free");
+
+  if (display_filter (DISPLAY_FLAG_CREATE) &&
+      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
+      gst_println (" --  Free GstMiniObject %" GST_PTR_FORMAT, mini_object);
+      print_trace();
+  }
+
+  real_gst_mini_object_free (mini_object);
+}
+
+void
+gst_mini_object_unref (GstMiniObject * mini_object)
+{
+  void (* real_gst_mini_object_unref) (GstMiniObject * mini_object);
+
+  real_gst_mini_object_unref = get_gst_func ("gst_mini_object_unref");
+
+      print_trace();
+
+  real_gst_mini_object_unref (mini_object);
+}
+
+GstMiniObject *
+gst_mini_object_ref (GstMiniObject * mini_object)
+{
+  GstMiniObject * (* real_gst_mini_object_ref) (GstMiniObject * mini_object);
+
+  real_gst_mini_object_ref = get_gst_func ("gst_mini_object_ref");
+
+  if (display_filter (DISPLAY_FLAG_REFS) &&
+      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
+      gst_println (" -  Ref %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
+              mini_object, mini_object, mini_object->refcount, mini_object->refcount + 1);
+      print_trace();
+  }
+
+  return real_gst_mini_object_ref (mini_object);
 }
