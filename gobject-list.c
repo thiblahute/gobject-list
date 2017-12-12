@@ -30,11 +30,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#ifdef HAVE_LIBUNWIND
-#define UNW_LOCAL_ONLY
-#include <libunwind.h>
-#endif
-
 typedef enum
 {
   DISPLAY_FLAG_NONE = 0,
@@ -125,11 +120,6 @@ display_filter (DisplayFlags flags)
 
           g_strfreev (tokens);
         }
-#ifndef HAVE_LIBUNWIND
-      if (display_flags & DISPLAY_FLAG_BACKTRACE)
-        g_print ("Warning: backtrace is not available, it needs libunwind\n");
-#endif
-
       parsed = TRUE;
     }
 
@@ -150,34 +140,13 @@ object_filter (const char *obj_name)
 static void
 print_trace (void)
 {
-#ifdef HAVE_LIBUNWIND
-  unw_context_t uc;
-  unw_cursor_t cursor;
-  guint stack_num = 0;
-
+    gchar *tmp;
   if (!display_filter (DISPLAY_FLAG_BACKTRACE))
     return;
 
-  unw_getcontext (&uc);
-  unw_init_local (&cursor, &uc);
-
-  while (unw_step (&cursor) > 0)
-    {
-      gchar name[129];
-      unw_word_t off;
-      int result;
-
-      result = unw_get_proc_name (&cursor, name, sizeof (name), &off);
-      if (result < 0 && result != -UNW_ENOMEM)
-        {
-          g_print ("Error getting frame: %s (%d)\n",
-                   unw_strerror (result), -result);
-          break;
-        }
-
-      g_print ("#%d  %s + [0x%08x]\n", stack_num++, name, (unsigned int)off);
-    }
-#endif
+  tmp = gst_debug_get_stack_trace (GST_STACK_TRACE_SHOW_FULL);
+  g_print("%s\n", tmp);
+  g_free (tmp);
 }
 
 static void
@@ -526,7 +495,12 @@ gst_mini_object_unref (GstMiniObject * mini_object)
 
   real_gst_mini_object_unref = get_gst_func ("gst_mini_object_unref");
 
+  if (display_filter (DISPLAY_FLAG_REFS) &&
+      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
+      gst_println (" -  Unrefed %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
+              mini_object, mini_object, mini_object->refcount, mini_object->refcount + 1);
       print_trace();
+  }
 
   real_gst_mini_object_unref (mini_object);
 }
