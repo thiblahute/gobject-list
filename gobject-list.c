@@ -131,6 +131,7 @@ object_filter (const char *obj_name)
 {
   const char *filter = g_getenv ("GOBJECT_LIST_FILTER");
 
+	  return FALSE;
   if (filter == NULL)
     return TRUE;
   else
@@ -207,7 +208,7 @@ _sig_usr2_handler (G_GNUC_UNUSED int signal)
 static void
 print_still_alive (void)
 {
-  g_print ("\nStill Alive:\n");
+  g_print ("\nStill Alive in %s:\n", g_get_prgname());
 
   G_LOCK (gobject_list);
   _dump_object_list (gobject_list_state.objects);
@@ -286,7 +287,7 @@ get_func (const char *func_name)
 
 static void
 _object_finalized (G_GNUC_UNUSED gpointer data,
-    GObject *obj)
+    gpointer obj)
 {
   G_LOCK (gobject_list);
 
@@ -358,7 +359,7 @@ g_object_new (GType type,
        * working, where gobject-list runs in its own thread and uses GWeakRefs
        * to keep track of objects. Periodically, it would check the hash table
        * and notify of which references have been nullified. */
-      g_object_weak_ref (obj, _object_finalized, NULL);
+      g_object_weak_ref (obj, (GWeakNotify)_object_finalized, NULL);
 
       g_hash_table_insert (gobject_list_state.objects, obj,
           GUINT_TO_POINTER (TRUE));
@@ -425,8 +426,6 @@ g_object_unref (gpointer object)
 
   real_g_object_unref (object);
 
-  if (object_filter (obj_name) && display_filter (DISPLAY_FLAG_REFS))
-    gst_print (" -  Unreffed object %p", obj);
 }
 
 static void *
@@ -456,36 +455,79 @@ get_gst_func (const char *func_name)
   return func;
 }
 
-void
-gst_structure_free (GstStructure * structure)
+static gpointer
+new_mini_object(GstMiniObject *mini_object)
 {
-  void (* real_gst_structure_free) (GstStructure * structure);
-
-  real_gst_structure_free = get_gst_func ("gst_structure_free");
-
-  if (display_filter (DISPLAY_FLAG_CREATE) &&
-      object_filter ("GstStructure")) {
-      gst_println (" -  Free GstStructure %" GST_PTR_FORMAT, structure);
-      print_trace();
+  G_LOCK (gobject_list);
+  if (display_filter(DISPLAY_FLAG_CREATE) && object_filter(g_type_name(GST_MINI_OBJECT_TYPE(mini_object)))) {
+    GST_ERROR("Created %s(%p)", g_type_name (GST_MINI_OBJECT_TYPE (mini_object)), mini_object);
+    print_trace();
   }
+  gst_mini_object_weak_ref (mini_object, (GstMiniObjectNotify)_object_finalized, NULL);
 
-  real_gst_structure_free (structure);
+  g_hash_table_insert (gobject_list_state.objects, mini_object, GUINT_TO_POINTER (TRUE));
+  g_hash_table_insert (gobject_list_state.added, mini_object, GUINT_TO_POINTER (TRUE));
+  G_UNLOCK (gobject_list);
+
+  return (gpointer) mini_object;
 }
 
-void
-gst_mini_object_free (GstMiniObject * mini_object)
+GstBuffer *
+gst_buffer_new (void)
 {
-  void (* real_gst_mini_object_free) (GstMiniObject * mini_object);
+    GstBuffer * (* real_gst_buffer_new) (void);
 
-  real_gst_mini_object_free = get_gst_func ("gst_mini_object_free");
+    real_gst_buffer_new = get_gst_func("gst_buffer_new");
 
-  if (display_filter (DISPLAY_FLAG_CREATE) &&
-      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
-      gst_println (" --  Free GstMiniObject %" GST_PTR_FORMAT, mini_object);
+    return new_mini_object(GST_MINI_OBJECT(real_gst_buffer_new()));
+}
+
+GstBuffer *
+gst_buffer_new_allocate (GstAllocator * allocator, gsize size,
+    GstAllocationParams * params)
+{
+    GstBuffer * (*real_gst_buffer_new_allocate) (GstAllocator * allocator, gsize size, GstAllocationParams * params);
+    real_gst_buffer_new_allocate = get_gst_func("gst_buffer_new_allocate");
+
+    return new_mini_object(GST_MINI_OBJECT(real_gst_buffer_new_allocate (allocator, size, params)));
+}
+
+GstBuffer *
+gst_buffer_new_wrapped_full (GstMemoryFlags flags, gpointer data,
+    gsize maxsize, gsize offset, gsize size, gpointer user_data,
+    GDestroyNotify notify)
+{
+    GstBuffer * (*real_gst_buffer_new_wrapped_full) (GstMemoryFlags flags, gpointer data,
+    gsize maxsize, gsize offset, gsize size, gpointer user_data,
+    GDestroyNotify notify);
+
+    real_gst_buffer_new_wrapped_full = get_gst_func("gst_buffer_new_wrapped_full");
+
+    return new_mini_object(GST_MINI_OBJECT(real_gst_buffer_new_wrapped_full (flags, data, maxsize, offset, size, user_data, notify)));
+}
+
+/* FIXME!!! Why doesn't it override the real function! */
+void
+gst_mini_object_init (GstMiniObject * mini_object, guint flags, GType type,
+    GstMiniObjectCopyFunction copy_func,
+    GstMiniObjectDisposeFunction dispose_func,
+    GstMiniObjectFreeFunction free_func)
+{
+  void (*real_gst_mini_object_init)(GstMiniObject * mini_object, guint flags, GType type, GstMiniObjectCopyFunction copy_func, GstMiniObjectDisposeFunction dispose_func, GstMiniObjectFreeFunction free_func);
+
+  GST_ERROR("What ze fucking fuck");
+  real_gst_mini_object_init = get_gst_func("gst_mini_object_init");
+
+  if (display_filter(DISPLAY_FLAG_CREATE) && object_filter(g_type_name(GST_MINI_OBJECT_TYPE(mini_object)))) {
+      GST_ERROR (" -  create %" GST_PTR_FORMAT " (%p)", mini_object, mini_object);
       print_trace();
+      gst_mini_object_weak_ref (mini_object, (GstMiniObjectNotify)_object_finalized, NULL);
+
+      g_hash_table_insert (gobject_list_state.objects, mini_object, GUINT_TO_POINTER (TRUE));
+      g_hash_table_insert (gobject_list_state.added, mini_object, GUINT_TO_POINTER (TRUE));
   }
 
-  real_gst_mini_object_free (mini_object);
+  real_gst_mini_object_init(mini_object, flags, type, copy_func, dispose_func, free_func);
 }
 
 void
@@ -493,13 +535,14 @@ gst_mini_object_unref (GstMiniObject * mini_object)
 {
   void (* real_gst_mini_object_unref) (GstMiniObject * mini_object);
 
-  real_gst_mini_object_unref = get_gst_func ("gst_mini_object_unref");
+  real_gst_mini_object_unref = get_gst_func("gst_mini_object_unref");
 
-  if (display_filter (DISPLAY_FLAG_REFS) &&
-      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
-      gst_println (" -  Unrefed %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
-              mini_object, mini_object, mini_object->refcount, mini_object->refcount + 1);
-      print_trace();
+  if (object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
+      if (display_filter (DISPLAY_FLAG_REFS)) {
+        GST_ERROR (" -  Unrefed %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
+                mini_object, mini_object, mini_object->refcount, mini_object->refcount + 1);
+        print_trace();
+      }
   }
 
   real_gst_mini_object_unref (mini_object);
@@ -512,11 +555,12 @@ gst_mini_object_ref (GstMiniObject * mini_object)
 
   real_gst_mini_object_ref = get_gst_func ("gst_mini_object_ref");
 
-  if (display_filter (DISPLAY_FLAG_REFS) &&
-      object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
-      gst_println (" -  Ref %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
+  if (object_filter (g_type_name(GST_MINI_OBJECT_TYPE (mini_object)))) {
+      if (display_filter(DISPLAY_FLAG_REFS)) {
+          GST_ERROR(" -  REF %p %" GST_PTR_FORMAT "; ref_count: %d -> %d",
               mini_object, mini_object, mini_object->refcount, mini_object->refcount + 1);
-      print_trace();
+          print_trace();
+      }
   }
 
   return real_gst_mini_object_ref (mini_object);
