@@ -407,18 +407,20 @@ g_object_unref (gpointer object)
 {
   void (* real_g_object_unref) (gpointer);
   GObject *obj = G_OBJECT (object);
+  gint ref_count;
   const char *obj_name;
 
   real_g_object_unref = get_func ("g_object_unref");
 
   obj_name = G_OBJECT_TYPE_NAME (obj);
+  ref_count = obj->ref_count;
 
   if (object_filter (obj_name) && display_filter (DISPLAY_FLAG_REFS))
     {
       g_mutex_lock(&output_mutex);
 
-      gst_print (" -  Unreffed object %" GST_PTR_FORMAT "; ref_count: %d -> %d\n",
-          obj, obj->ref_count, obj->ref_count - 1);
+      gst_print (" -  Unreffed object %" GST_PTR_FORMAT "(%p); ref_count: %d -> %d\n",
+          obj, obj, ref_count, ref_count - 1);
       print_trace();
 
       g_mutex_unlock(&output_mutex);
