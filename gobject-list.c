@@ -163,7 +163,7 @@ _dump_object_list (GHashTable *hash)
       if (obj == NULL || obj->ref_count == 0)
         continue;
 
-      gst_println (" - %" GST_PTR_FORMAT ": %u refs", obj,
+      GST_ERROR (" - %" GST_PTR_FORMAT " (%p) : %u refs", obj, obj,
               obj->ref_count);
     }
   g_print ("%u objects\n", g_hash_table_size (hash));
@@ -194,7 +194,7 @@ _sig_usr2_handler (G_GNUC_UNUSED int signal)
   g_hash_table_iter_init (&iter, gobject_list_state.removed);
   while (g_hash_table_iter_next (&iter, &obj, &type))
     {
-      gst_println (" - %" GST_PTR_FORMAT "", obj);
+      GST_ERROR (" - %" GST_PTR_FORMAT "(%p)", obj, obj);
     }
   g_print ("%u objects\n", g_hash_table_size (gobject_list_state.removed));
 
@@ -295,7 +295,8 @@ _object_finalized (G_GNUC_UNUSED gpointer data,
     {
       g_mutex_lock(&output_mutex);
 
-      g_print (" -- Finalized object %p, %s\n", obj, G_OBJECT_TYPE_NAME (obj));
+
+      GST_ERROR (" -- Finalized %" GST_PTR_FORMAT "(%p)", obj, obj);
       print_trace();
 
       g_mutex_unlock(&output_mutex);
@@ -340,7 +341,7 @@ g_object_new (GType type,
         {
           g_mutex_lock(&output_mutex);
 
-          gst_println (" ++ Created object %" GST_PTR_FORMAT, obj);
+          GST_ERROR (" ++ Created object %" GST_PTR_FORMAT "(%p)", obj, obj);
           print_trace();
 
           g_mutex_unlock(&output_mutex);
@@ -392,8 +393,8 @@ g_object_ref (gpointer object)
     {
       g_mutex_lock(&output_mutex);
 
-      gst_println (" +  Reffed object %" GST_PTR_FORMAT "; ref_count: %d -> %d",
-          obj, ref_count, obj->ref_count);
+      GST_ERROR (" +  Reffed object %" GST_PTR_FORMAT "(%p); ref_count: %d -> %d",
+          obj, obj, ref_count, ref_count + 1);
       print_trace();
 
       g_mutex_unlock(&output_mutex);
