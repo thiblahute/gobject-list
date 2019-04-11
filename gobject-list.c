@@ -22,6 +22,10 @@
  *     Danielle Madeley  <danielle.madeley@collabora.co.uk>
  *     Philip Withnall  <philip.withnall@collabora.co.uk>
  */
+#define ENCODE_VERSION(major,minor)   ((major) << 16 | (minor) << 8)
+
+#define GLIB_VERSION_MAX_ALLOWED ENCODE_VERSION(2, 40)
+#define GLIB_VERSION_MIN_REQUIRED ENCODE_VERSION(2, 26)
 #include <glib-object.h>
 
 #include <dlfcn.h>
