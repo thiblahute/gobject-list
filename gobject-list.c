@@ -348,6 +348,178 @@ _object_finalized (G_GNUC_UNUSED gpointer data,
   G_UNLOCK (gobject_list);
 }
 
+GObject *
+g_object_new_with_properties (GType          object_type,
+                              guint          n_properties,
+                              const char    *names[],
+                              const GValue   values[])
+{
+  GObject * (* real_g_object_new_with_properties)  (GType          object_type,
+                              guint          n_properties,
+                              const char    *names[],
+                              const GValue   values[]);
+  GObject *obj;
+  const char *obj_name;
+
+  real_g_object_new_with_properties = get_func ("g_object_new_with_properties");
+
+  obj = real_g_object_new_with_properties (object_type, n_properties, names, values);
+
+  obj_name = G_OBJECT_TYPE_NAME (obj);
+
+  G_LOCK (gobject_list);
+
+  if (g_hash_table_lookup (gobject_list_state.objects, obj) == NULL &&
+      object_filter (obj_name))
+    {
+      if (display_filter (DISPLAY_FLAG_CREATE))
+        {
+          g_mutex_lock(&output_mutex);
+
+          g_print (" ++ Created object %p, %s\n", obj, obj_name);
+          print_trace();
+
+          g_mutex_unlock(&output_mutex);
+        }
+
+      /* FIXME: For thread safety, GWeakRef should be used here, except it
+       * won’t give us notify callbacks. Perhaps an opportunistic combination
+       * of GWeakRef and g_object_weak_ref() — the former for safety, the latter
+       * for notifications (with the knowledge that due to races, some
+       * notifications may get omitted)?
+       *
+       * Alternatively, we could abuse GToggleRef. Inadvisable because other
+       * code could be using it.
+       *
+       * Alternatively, we could switch to a garbage-collection style of
+       * working, where gobject-list runs in its own thread and uses GWeakRefs
+       * to keep track of objects. Periodically, it would check the hash table
+       * and notify of which references have been nullified. */
+      g_object_weak_ref (obj, _object_finalized, NULL);
+
+      g_hash_table_insert (gobject_list_state.objects, obj,
+          GUINT_TO_POINTER (TRUE));
+      g_hash_table_insert (gobject_list_state.added, obj,
+          GUINT_TO_POINTER (TRUE));
+    }
+
+  G_UNLOCK (gobject_list);
+
+  return obj;
+}
+
+gpointer
+g_object_newv (GType       object_type,
+               guint       n_parameters,
+               GParameter *parameters)
+{
+  gpointer (* real_g_object_newv)  (GType       object_type, guint       n_parameters, GParameter *parameters);
+  GObject *obj;
+  const char *obj_name;
+
+  real_g_object_newv = get_func ("g_object_newv");
+
+  obj = real_g_object_newv (object_type, n_parameters, parameters);
+
+  obj_name = G_OBJECT_TYPE_NAME (obj);
+  g_printerr("\n\nere %s\n\n", obj_name);
+
+  G_LOCK (gobject_list);
+
+  if (g_hash_table_lookup (gobject_list_state.objects, obj) == NULL &&
+      object_filter (obj_name))
+    {
+      if (display_filter (DISPLAY_FLAG_CREATE))
+        {
+          g_mutex_lock(&output_mutex);
+
+          g_print (" ++ Created object %p, %s\n", obj, obj_name);
+          print_trace();
+
+          g_mutex_unlock(&output_mutex);
+        }
+
+      /* FIXME: For thread safety, GWeakRef should be used here, except it
+       * won’t give us notify callbacks. Perhaps an opportunistic combination
+       * of GWeakRef and g_object_weak_ref() — the former for safety, the latter
+       * for notifications (with the knowledge that due to races, some
+       * notifications may get omitted)?
+       *
+       * Alternatively, we could abuse GToggleRef. Inadvisable because other
+       * code could be using it.
+       *
+       * Alternatively, we could switch to a garbage-collection style of
+       * working, where gobject-list runs in its own thread and uses GWeakRefs
+       * to keep track of objects. Periodically, it would check the hash table
+       * and notify of which references have been nullified. */
+      g_object_weak_ref (obj, _object_finalized, NULL);
+
+      g_hash_table_insert (gobject_list_state.objects, obj,
+          GUINT_TO_POINTER (TRUE));
+      g_hash_table_insert (gobject_list_state.added, obj,
+          GUINT_TO_POINTER (TRUE));
+    }
+
+  G_UNLOCK (gobject_list);
+
+  return obj;
+}
+
+GObject*
+g_object_new_valist (GType        object_type,
+                     const gchar *first_property_name,
+                     va_list      var_args)
+{
+  gpointer (* real_g_object_new_valist) (GType, const char *, va_list);
+  GObject *obj;
+  const char *obj_name;
+
+  real_g_object_new_valist = get_func ("g_object_new_valist");
+
+  obj = real_g_object_new_valist (object_type, first_property_name, var_args);
+  obj_name = G_OBJECT_TYPE_NAME (obj);
+
+  G_LOCK (gobject_list);
+
+  if (g_hash_table_lookup (gobject_list_state.objects, obj) == NULL &&
+      object_filter (obj_name))
+    {
+      if (display_filter (DISPLAY_FLAG_CREATE))
+        {
+          g_mutex_lock(&output_mutex);
+
+          g_print (" ++ Created object %p, %s\n", obj, obj_name);
+          print_trace();
+
+          g_mutex_unlock(&output_mutex);
+        }
+
+      /* FIXME: For thread safety, GWeakRef should be used here, except it
+       * won’t give us notify callbacks. Perhaps an opportunistic combination
+       * of GWeakRef and g_object_weak_ref() — the former for safety, the latter
+       * for notifications (with the knowledge that due to races, some
+       * notifications may get omitted)?
+       *
+       * Alternatively, we could abuse GToggleRef. Inadvisable because other
+       * code could be using it.
+       *
+       * Alternatively, we could switch to a garbage-collection style of
+       * working, where gobject-list runs in its own thread and uses GWeakRefs
+       * to keep track of objects. Periodically, it would check the hash table
+       * and notify of which references have been nullified. */
+      g_object_weak_ref (obj, _object_finalized, NULL);
+
+      g_hash_table_insert (gobject_list_state.objects, obj,
+          GUINT_TO_POINTER (TRUE));
+      g_hash_table_insert (gobject_list_state.added, obj,
+          GUINT_TO_POINTER (TRUE));
+    }
+
+  G_UNLOCK (gobject_list);
+
+  return obj;
+}
+
 gpointer
 g_object_new (GType type,
     const char *first,
